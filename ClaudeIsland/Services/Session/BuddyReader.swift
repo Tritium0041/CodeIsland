@@ -181,27 +181,30 @@ class BuddyReader: ObservableObject {
 
         let origBytes = Data(originalSalt.utf8)
 
-        // Check ALL versions — a patched older version means user customized their buddy
+        // Check latest version first
         for binary in binaries {
             let binaryPath = "\(versionsDir)/\(binary)"
             guard let binaryData = try? Data(contentsOf: URL(fileURLWithPath: binaryPath)) else { continue }
 
-            // If original salt found, this version is unpatched — skip, check older ones
-            if binaryData.range(of: origBytes) != nil { continue }
+            // If original salt found, this version is unpatched — use original
+            if binaryData.range(of: origBytes) != nil {
+                return originalSalt
+            }
 
-            // This version was patched — extract the new salt from its backup
+            // Binary was patched — extract the patched salt from backup
             let bakCandidates = ["\(binaryPath).anybuddy-bak", "\(binaryPath).bak"]
             for bakPath in bakCandidates {
-                guard let bakData = try? Data(contentsOf: URL(fileURLWithPath: bakPath)) else { continue }
-                if let range = bakData.range(of: origBytes) {
-                    let offset = range.lowerBound
-                    let end = offset + origBytes.count
-                    guard end <= binaryData.count else { continue }
-                    let patchedBytes = binaryData[offset..<end]
-                    if let patchedSalt = String(data: Data(patchedBytes), encoding: .utf8),
-                       patchedSalt.allSatisfy({ $0.isASCII && !$0.isNewline }) {
-                        return patchedSalt
-                    }
+                guard FileManager.default.fileExists(atPath: bakPath),
+                      let bakData = try? Data(contentsOf: URL(fileURLWithPath: bakPath)),
+                      let range = bakData.range(of: origBytes) else { continue }
+                let offset = range.lowerBound
+                let end = offset + origBytes.count
+                guard end <= binaryData.count else { continue }
+                let patchedBytes = binaryData[offset..<end]
+                if let patchedSalt = String(data: Data(patchedBytes), encoding: .utf8),
+                   patchedSalt.count == originalSalt.count,
+                   patchedSalt.allSatisfy({ $0.isASCII && !$0.isNewline }) {
+                    return patchedSalt
                 }
             }
         }
