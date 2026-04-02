@@ -2,8 +2,9 @@
 //  BuddyReader.swift
 //  CodeIsland
 //
-//  Reads Claude Code buddy data by running buddy-bones.js with Bun
-//  to get exact species, rarity, stats matching Claude Code's computation.
+//  Reads Claude Code buddy data from ~/.claude.json and computes
+//  deterministic bones (species, rarity, stats) using native wyhash.
+//  No Bun dependency required.
 //
 
 import Combine
@@ -117,111 +118,189 @@ class BuddyReader: ObservableObject {
     }
 
     func reload() {
-        // Try running bun script first for accurate data
-        if let info = runBunScript() {
-            buddy = info
-            return
-        }
-        // Fallback: read basic info from ~/.claude.json
-        buddy = readBasicInfo()
-    }
-
-    // MARK: - Bun Script (accurate computation)
-
-    private func runBunScript() -> BuddyInfo? {
-        // Find the buddy-bones.js script in the app bundle
-        guard let scriptURL = Bundle.main.url(forResource: "buddy-bones", withExtension: "js") else {
-            return nil
-        }
-
-        // Find bun
-        let bunPaths = ["/Users/\(NSUserName())/bin/bun", "/opt/homebrew/bin/bun", "/usr/local/bin/bun"]
-        guard let bunPath = bunPaths.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) else {
-            return nil
-        }
-
-        let process = Process()
-        let pipe = Pipe()
-        process.executableURL = URL(fileURLWithPath: bunPath)
-        process.arguments = [scriptURL.path]
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-
-        do {
-            try process.run()
-            process.waitUntilExit()
-            guard process.terminationStatus == 0 else { return nil }
-
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
-
-            return parseBuddyJSON(json)
-        } catch {
-            return nil
-        }
-    }
-
-    // MARK: - Fallback: basic info from config
-
-    private func readBasicInfo() -> BuddyInfo? {
-        let path = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude.json")
-        guard let data = try? Data(contentsOf: path),
+        let configPath = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude.json")
+        guard let data = try? Data(contentsOf: configPath),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let companion = json["companion"] as? [String: Any],
               let name = companion["name"] as? String,
               let personality = companion["personality"] as? String else {
-            return nil
+            buddy = nil
+            return
         }
-
-        // Detect species from personality text
-        let species = BuddySpecies.allCases.first { s in
-            s != .unknown && personality.lowercased().contains(s.rawValue)
-        } ?? .unknown
 
         let hatchedAt: Date? = (companion["hatchedAt"] as? Double).map {
             Date(timeIntervalSince1970: $0 / 1000.0)
         }
 
-        return BuddyInfo(
-            name: name, personality: personality,
-            species: species, rarity: .common,
-            stats: BuddyStats(debugging: 0, patience: 0, chaos: 0, wisdom: 0, snark: 0),
-            eye: "·", hat: "none", isShiny: false, hatchedAt: hatchedAt
+        // Get userId for deterministic bones computation
+        let userId: String
+        if let oauth = json["oauthAccount"] as? [String: Any],
+           let uuid = oauth["accountUuid"] as? String {
+            userId = uuid
+        } else if let uid = json["userID"] as? String {
+            userId = uid
+        } else {
+            userId = "anon"
+        }
+
+        // Read salt from Claude Code binary (supports patched installs)
+        let salt = Self.readSalt()
+
+        // Compute bones using native wyhash (matches Bun.hash exactly)
+        let bones = Self.computeBones(userId: userId, salt: salt)
+
+        buddy = BuddyInfo(
+            name: name,
+            personality: personality,
+            species: bones.species,
+            rarity: bones.rarity,
+            stats: bones.stats,
+            eye: bones.eye,
+            hat: bones.hat,
+            isShiny: bones.isShiny,
+            hatchedAt: hatchedAt
         )
     }
 
-    // MARK: - Parse JSON
+    // MARK: - Salt Detection
 
-    private func parseBuddyJSON(_ json: [String: Any]) -> BuddyInfo? {
-        guard let name = json["name"] as? String else { return nil }
+    private static let originalSalt = "friend-2026-401"
 
-        let personality = json["personality"] as? String ?? ""
-        let speciesStr = json["species"] as? String ?? "unknown"
-        let species = BuddySpecies(rawValue: speciesStr) ?? .unknown
-        let rarityStr = json["rarity"] as? String ?? "common"
-        let rarity = BuddyRarity(rawValue: rarityStr) ?? .common
-        let eye = json["eye"] as? String ?? "·"
-        let hat = json["hat"] as? String ?? "none"
-        let shiny = json["shiny"] as? Bool ?? false
+    private static func readSalt() -> String {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let versionsDir = "\(home)/.local/share/claude/versions"
 
-        let statsDict = json["stats"] as? [String: Any] ?? [:]
-        let stats = BuddyStats(
-            debugging: statsDict["DEBUGGING"] as? Int ?? 0,
-            patience: statsDict["PATIENCE"] as? Int ?? 0,
-            chaos: statsDict["CHAOS"] as? Int ?? 0,
-            wisdom: statsDict["WISDOM"] as? Int ?? 0,
-            snark: statsDict["SNARK"] as? Int ?? 0
-        )
-
-        let hatchedAt: Date? = (json["hatchedAt"] as? Double).map {
-            Date(timeIntervalSince1970: $0 / 1000.0)
+        // Find latest Claude binary
+        guard let versions = try? FileManager.default.contentsOfDirectory(atPath: versionsDir) else {
+            return originalSalt
         }
 
-        return BuddyInfo(
-            name: name, personality: personality,
-            species: species, rarity: rarity,
-            stats: stats, eye: eye, hat: hat,
-            isShiny: shiny, hatchedAt: hatchedAt
+        let binaries = versions
+            .filter { !$0.contains(".bak") && !$0.contains(".anybuddy") }
+            .sorted { $0.compare($1, options: .numeric) == .orderedDescending }
+
+        let origBytes = Data(originalSalt.utf8)
+
+        // Check ALL versions — a patched older version means user customized their buddy
+        for binary in binaries {
+            let binaryPath = "\(versionsDir)/\(binary)"
+            guard let binaryData = try? Data(contentsOf: URL(fileURLWithPath: binaryPath)) else { continue }
+
+            // If original salt found, this version is unpatched — skip, check older ones
+            if binaryData.range(of: origBytes) != nil { continue }
+
+            // This version was patched — extract the new salt from its backup
+            let bakCandidates = ["\(binaryPath).anybuddy-bak", "\(binaryPath).bak"]
+            for bakPath in bakCandidates {
+                guard let bakData = try? Data(contentsOf: URL(fileURLWithPath: bakPath)) else { continue }
+                if let range = bakData.range(of: origBytes) {
+                    let offset = range.lowerBound
+                    let end = offset + origBytes.count
+                    guard end <= binaryData.count else { continue }
+                    let patchedBytes = binaryData[offset..<end]
+                    if let patchedSalt = String(data: Data(patchedBytes), encoding: .utf8),
+                       patchedSalt.allSatisfy({ $0.isASCII && !$0.isNewline }) {
+                        return patchedSalt
+                    }
+                }
+            }
+        }
+
+        return originalSalt
+    }
+
+    // MARK: - Bones Computation (Mulberry32 + WyHash)
+
+    private struct Bones {
+        let species: BuddySpecies
+        let rarity: BuddyRarity
+        let stats: BuddyStats
+        let eye: String
+        let hat: String
+        let isShiny: Bool
+    }
+
+    /// Mulberry32 PRNG — same as Claude Code's implementation
+    private struct Mulberry32 {
+        var state: UInt32
+
+        init(seed: UInt32) {
+            self.state = seed
+        }
+
+        mutating func next() -> Double {
+            state &+= 0x6D2B79F5
+            var t = state
+            t = (t ^ (t >> 15)) &* (t | 1)
+            t = (t &+ ((t ^ (t >> 7)) &* (t | 61))) ^ t
+            let result = (t ^ (t >> 14))
+            return Double(result) / 4294967296.0
+        }
+    }
+
+    private static func computeBones(userId: String, salt: String) -> Bones {
+        let key = userId + salt
+        let hash = WyHash.hash(key)
+        let seed = UInt32(hash & 0xFFFFFFFF)
+        var rng = Mulberry32(seed: seed)
+
+        // Species
+        let speciesAll: [BuddySpecies] = [.duck, .goose, .blob, .cat, .dragon, .octopus, .owl, .penguin, .turtle, .snail, .ghost, .axolotl, .capybara, .cactus, .robot, .rabbit, .mushroom, .chonk]
+        let species = speciesAll[Int(floor(rng.next() * Double(speciesAll.count)))]
+
+        // Rarity
+        let rarityWeights: [(BuddyRarity, Int)] = [(.common, 60), (.uncommon, 25), (.rare, 10), (.epic, 4), (.legendary, 1)]
+        var roll = rng.next() * 100.0
+        var rarity: BuddyRarity = .common
+        for (r, w) in rarityWeights {
+            roll -= Double(w)
+            if roll < 0 { rarity = r; break }
+        }
+
+        // Eye
+        let eyes = ["·", "✦", "×", "◉", "@", "°"]
+        let eye = eyes[Int(floor(rng.next() * Double(eyes.count)))]
+
+        // Hat
+        let hats = ["none", "crown", "tophat", "propeller", "halo", "wizard", "beanie", "tinyduck"]
+        let hat = rarity == .common ? "none" : hats[Int(floor(rng.next() * Double(hats.count)))]
+
+        // Shiny
+        let isShiny = rng.next() < 0.01
+
+        // Stats
+        let statNames = ["DEBUGGING", "PATIENCE", "CHAOS", "WISDOM", "SNARK"]
+        let rarityFloor: [BuddyRarity: Int] = [.common: 5, .uncommon: 15, .rare: 25, .epic: 35, .legendary: 50]
+        let statFloor = rarityFloor[rarity] ?? 5
+
+        let peak = statNames[Int(floor(rng.next() * Double(statNames.count)))]
+        var dump = statNames[Int(floor(rng.next() * Double(statNames.count)))]
+        while dump == peak { dump = statNames[Int(floor(rng.next() * Double(statNames.count)))] }
+
+        var statValues = [String: Int]()
+        for name in statNames {
+            if name == peak {
+                statValues[name] = min(100, statFloor + 50 + Int(floor(rng.next() * 30)))
+            } else if name == dump {
+                statValues[name] = max(1, statFloor - 10 + Int(floor(rng.next() * 15)))
+            } else {
+                statValues[name] = statFloor + Int(floor(rng.next() * 40))
+            }
+        }
+
+        return Bones(
+            species: species,
+            rarity: rarity,
+            stats: BuddyStats(
+                debugging: statValues["DEBUGGING"] ?? 0,
+                patience: statValues["PATIENCE"] ?? 0,
+                chaos: statValues["CHAOS"] ?? 0,
+                wisdom: statValues["WISDOM"] ?? 0,
+                snark: statValues["SNARK"] ?? 0
+            ),
+            eye: eye,
+            hat: hat,
+            isShiny: isShiny
         )
     }
 }
