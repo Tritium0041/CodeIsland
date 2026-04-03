@@ -218,7 +218,7 @@ actor SessionStore {
 
                 // Skip creating top-level placeholder for subagent tools
                 // They'll appear under their parent Task instead
-                let isSubagentTool = session.subagentState.hasActiveSubagent && toolName != "Task"
+                let isSubagentTool = session.subagentState.hasActiveSubagent && toolName != "Task" && toolName != "Agent"
                 if isSubagentTool {
                     return
                 }
@@ -281,17 +281,21 @@ actor SessionStore {
     }
 
     private func processSubagentTracking(event: HookEvent, session: inout SessionState) {
+        let isAgentTool = event.tool == "Task" || event.tool == "Agent"
+
         switch event.event {
         case "PreToolUse":
-            if event.tool == "Task", let toolUseId = event.toolUseId {
+            if isAgentTool, let toolUseId = event.toolUseId {
                 let description = event.toolInput?["description"]?.value as? String
-                session.subagentState.startTask(taskToolId: toolUseId, description: description)
-                Self.logger.debug("Started Task subagent tracking: \(toolUseId.prefix(12), privacy: .public)")
+                    ?? event.toolInput?["prompt"]?.value as? String
+                let shortDesc = description.map { String($0.prefix(60)) }
+                session.subagentState.startTask(taskToolId: toolUseId, description: shortDesc)
+                DebugLogger.log("Subagent", "Started \(event.tool ?? "?"): \(shortDesc ?? "nil")")
             }
 
         case "PostToolUse":
-            if event.tool == "Task" {
-                Self.logger.debug("PostToolUse for Task received (subagent still running)")
+            if isAgentTool {
+                DebugLogger.log("Subagent", "PostToolUse for \(event.tool ?? "?")")
             }
 
         case "SubagentStop":

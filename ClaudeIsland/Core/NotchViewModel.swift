@@ -74,7 +74,7 @@ class NotchViewModel: ObservableObject {
             // Settings menu — enough height for all items including expanded pickers
             return CGSize(
                 width: min(screenRect.width * 0.4, 480),
-                height: 520 + screenSelector.expandedPickerHeight + soundSelector.expandedPickerHeight
+                height: 560 + screenSelector.expandedPickerHeight + soundSelector.expandedPickerHeight
             )
         case .instances:
             return CGSize(

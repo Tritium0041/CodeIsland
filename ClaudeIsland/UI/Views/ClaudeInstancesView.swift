@@ -26,12 +26,53 @@ struct ClaudeInstancesView: View {
         } else {
             ZStack(alignment: .bottomTrailing) {
                 VStack(spacing: 0) {
-                    // Top bar: session count left, gear right
-                    HStack {
-                        Text("\(sessionMonitor.instances.count) \(L10n.sessions)")
-                            .font(.system(size: 13))
-                            .foregroundColor(.white.opacity(0.25))
+                    // Top bar: rate limit + session info left, settings right
+                    HStack(spacing: 0) {
+                        // Rate limit display
+                        HStack(spacing: 4) {
+                            if let info = rateLimitMonitor.rateLimitInfo {
+                                Text(info.displayText)
+                                    .font(.system(size: 11, design: .monospaced))
+                                    .foregroundColor(info.color)
+                                    .help(info.tooltip)
+                            }
+
+                            // Refresh button with tooltip
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 9))
+                                .foregroundColor(.white.opacity(rateLimitMonitor.isLoading ? 0.5 : 0.25))
+                                .rotationEffect(.degrees(rateLimitMonitor.isLoading ? 360 : 0))
+                                .animation(rateLimitMonitor.isLoading ? .linear(duration: 1).repeatForever(autoreverses: false) : .default, value: rateLimitMonitor.isLoading)
+                                .frame(width: 16, height: 16)
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    Task { await rateLimitMonitor.refresh() }
+                                }
+                                .help("刷新 Claude 用量")
+                        }
+
+                        Text("·")
+                            .font(.system(size: 11))
+                            .foregroundColor(.white.opacity(0.12))
+                            .padding(.horizontal, 4)
+
+                        // Session count + total time
+                        HStack(spacing: 3) {
+                            Text("\(sessionMonitor.instances.count) \(L10n.sessions)")
+                                .font(.system(size: 11))
+                                .foregroundColor(.white.opacity(0.25))
+
+                            let totalMinutes = totalSessionMinutes
+                            if totalMinutes > 0 {
+                                Text(formatTotalTime(totalMinutes))
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.white.opacity(0.2))
+                            }
+                        }
+
                         Spacer()
+
+                        // Settings button
                         Button {
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                                 viewModel.toggleMenu()
@@ -44,9 +85,10 @@ struct ClaudeInstancesView: View {
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
+                        .help("设置")
                     }
                     .padding(.horizontal, 10)
-                    .padding(.top, 28) // Push below camera module
+                    .padding(.top, 6)
 
                     if showBuddyCard, let buddy = buddyReader.buddy {
                         buddyCardView(buddy)
@@ -185,13 +227,43 @@ struct ClaudeInstancesView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    // MARK: - Stats
+
+    /// Total minutes across all sessions
+    private var totalSessionMinutes: Int {
+        sessionMonitor.instances.reduce(0) { total, session in
+            total + Int(Date().timeIntervalSince(session.createdAt) / 60)
+        }
+    }
+
+    /// Format total time as "Xh Ym" or "Ym"
+    private func formatTotalTime(_ minutes: Int) -> String {
+        if minutes >= 60 {
+            let h = minutes / 60
+            let m = minutes % 60
+            return m > 0 ? "\(h)h\(m)m" : "\(h)h"
+        }
+        return "\(minutes)m"
+    }
+
+    @StateObject private var rateLimitMonitor = RateLimitMonitor.shared
+
     // MARK: - Instances List
 
     /// Priority: active (approval/processing/compacting) > waitingForInput > idle
     /// Secondary sort: by last user message date (stable - doesn't change when agent responds)
     /// Note: approval requests stay in their date-based position to avoid layout shift
     private var sortedInstances: [SessionState] {
-        sessionMonitor.instances.sorted { a, b in
+        sessionMonitor.instances
+        .filter { session in
+            // Filter out short-lived ended sessions (< 30s, likely from rate limit checks)
+            if session.phase == .ended {
+                let duration = Date().timeIntervalSince(session.createdAt)
+                return duration > 30
+            }
+            return true
+        }
+        .sorted { a, b in
             let priorityA = phasePriority(a.phase)
             let priorityB = phasePriority(b.phase)
             if priorityA != priorityB {
@@ -233,6 +305,11 @@ struct ClaudeInstancesView: View {
                         onReject: { rejectSession(session) }
                     )
                     .id(session.stableId)
+
+                    // Subagent rows under this session
+                    if session.subagentState.hasActiveSubagent {
+                        SubagentListView(session: session)
+                    }
 
                     // Gradient divider between rows
                     if index < sortedInstances.count - 1 {
@@ -366,6 +443,19 @@ struct InstanceRow: View {
         return "\(hours)h"
     }
 
+    /// Terminal tag color based on app type
+    private var terminalTagColor: Color {
+        let tag = terminalTag.lowercased()
+        if tag.contains("cmux") { return Color(red: 0.56, green: 0.79, blue: 0.98) }      // blue
+        if tag.contains("ghostty") { return Color(red: 0.7, green: 0.6, blue: 1.0) }       // purple
+        if tag.contains("iterm") { return Color(red: 0.29, green: 0.87, blue: 0.5) }       // green
+        if tag.contains("warp") { return Color(red: 0.96, green: 0.62, blue: 0.04) }       // amber
+        if tag.contains("cursor") { return Color(red: 0.4, green: 0.91, blue: 0.98) }      // cyan
+        if tag.contains("code") { return Color(red: 0.29, green: 0.67, blue: 0.96) }       // vs blue
+        if tag.contains("kitty") { return Color(red: 0.94, green: 0.5, blue: 0.5) }        // salmon
+        return Color.white.opacity(0.4)
+    }
+
     /// Terminal app name — auto-detected from process tree
     private var terminalTag: String {
         session.terminalApp ?? (session.isInTmux ? "tmux" : "term")
@@ -403,72 +493,123 @@ struct InstanceRow: View {
         }
     }
 
+    /// Whether this session is active (not idle/ended)
+    private var isActive: Bool {
+        switch session.phase {
+        case .processing, .compacting, .waitingForApproval, .waitingForInput:
+            return true
+        case .idle, .ended:
+            return false
+        }
+    }
+
+    private var iconScale: CGFloat { isActive ? 0.45 : 0.35 }
+    private var iconSize: CGFloat { isActive ? 28 : 22 }
+    private var titleFontSize: CGFloat { isActive ? 13 : 11 }
+    private var subtitleFontSize: CGFloat { isActive ? 10 : 9 }
+
     var body: some View {
         VStack(spacing: 0) {
-            HStack(alignment: .top, spacing: 6) {
+            HStack(alignment: .top, spacing: isActive ? 8 : 6) {
                 // Buddy icon or pixel cat
                 ZStack {
                     if usePixelCat {
                         PixelCharacterView(state: animationState)
-                            .scaleEffect(0.35)
+                            .scaleEffect(iconScale)
                     } else if let buddy = buddyReader.buddy {
                         EmojiPixelView(emoji: buddy.species.emoji, style: .rock)
-                            .scaleEffect(0.35)
+                            .scaleEffect(iconScale)
                     } else {
                         PixelCharacterView(state: animationState)
-                            .scaleEffect(0.35)
+                            .scaleEffect(iconScale)
                     }
                     // Status dot overlay
                     Circle()
                         .fill(accentColor)
-                        .frame(width: 5, height: 5)
-                        .shadow(color: accentColor.opacity(0.6), radius: 2)
-                        .offset(x: 8, y: 8)
+                        .frame(width: isActive ? 6 : 5, height: isActive ? 6 : 5)
+                        .shadow(color: accentColor.opacity(0.6), radius: isActive ? 3 : 2)
+                        .offset(x: iconSize / 2 - 3, y: iconSize / 2 - 3)
                 }
-                .frame(width: 22, height: 22)
+                .frame(width: iconSize, height: iconSize)
                 .padding(.top, 2)
 
                 // Content
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: isActive ? 4 : 3) {
                     // Title row
                     HStack(spacing: 4) {
                         Text(titleText)
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(.white.opacity(0.85))
-                            .lineLimit(1)
+                            .font(.system(size: titleFontSize, weight: isActive ? .semibold : .medium))
+                            .foregroundColor(.white.opacity(isActive ? 0.95 : 0.85))
+                            .lineLimit(isActive ? 2 : 1)
 
                         Spacer(minLength: 0)
 
-                        // Terminal tag — grey pill (shows tmux if in tmux)
+                        // Subagent badge (if active)
+                        if session.subagentState.hasActiveSubagent {
+                            Text("⚡\(session.subagentState.activeTasks.count)")
+                                .font(.system(size: 8, weight: .medium))
+                                .foregroundColor(Color(red: 0.6, green: 0.8, blue: 1.0))
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 2)
+                                .background(
+                                    Capsule().fill(Color(red: 0.6, green: 0.8, blue: 1.0).opacity(0.12))
+                                )
+                        }
+
+                        // Terminal tag — colored by terminal type
                         Text(terminalTag)
-                            .font(.system(size: 8, weight: .medium))
-                            .foregroundColor(.white.opacity(0.35))
+                            .font(.system(size: 8, weight: .semibold))
+                            .foregroundColor(terminalTagColor)
                             .padding(.horizontal, 5)
                             .padding(.vertical, 2)
                             .background(
-                                Capsule().fill(Color.white.opacity(0.06))
+                                Capsule().fill(terminalTagColor.opacity(0.12))
                             )
 
-                        // Duration
+                        // Duration — colored when active
                         Text(durationText)
-                            .font(.system(size: 10))
-                            .foregroundColor(.white.opacity(0.3))
+                            .font(.system(size: 10, weight: isActive ? .medium : .regular))
+                            .foregroundColor(isActive ? accentColor.opacity(0.7) : .white.opacity(0.3))
 
-                        // Terminal jump button — uses onTapGesture to avoid SwiftUI Button hitTest issues
+                        // Terminal jump button — green tinted
                         Image(systemName: "terminal")
                             .font(.system(size: 10))
-                            .foregroundColor(.white.opacity(0.4))
+                            .foregroundColor(Color(red: 0.29, green: 0.87, blue: 0.5).opacity(0.7))
                             .frame(width: 20, height: 20)
                             .background(
                                 RoundedRectangle(cornerRadius: 4)
-                                    .fill(Color.white.opacity(0.08))
+                                    .fill(Color(red: 0.29, green: 0.87, blue: 0.5).opacity(0.1))
                             )
                             .contentShape(Rectangle())
                             .onTapGesture { onFocus() }
+
+                        // Delete button (ended/idle sessions)
+                        if !isActive {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 8, weight: .medium))
+                                .foregroundColor(.white.opacity(0.25))
+                                .frame(width: 16, height: 16)
+                                .contentShape(Rectangle())
+                                .onTapGesture { onArchive() }
+                        }
                     }
 
                     // Subtitle
                     subtitleView
+
+                    // Active session: show last tool action
+                    if isActive, let toolName = session.lastToolName,
+                       let lastMsg = session.lastMessage {
+                        HStack(spacing: 3) {
+                            Image(systemName: "wrench.and.screwdriver")
+                                .font(.system(size: 8))
+                                .foregroundColor(.white.opacity(0.2))
+                            Text("\(toolName): \(lastMsg)")
+                                .font(.system(size: 9))
+                                .foregroundColor(.white.opacity(0.3))
+                                .lineLimit(1)
+                        }
+                    }
 
                     // Approval buttons row when needed
                     if isWaitingForApproval {
@@ -482,12 +623,14 @@ struct InstanceRow: View {
                 }
             }
             .padding(.horizontal, 8)
-            .padding(.vertical, 7)
+            .padding(.vertical, isActive ? 10 : 7)
             .contentShape(Rectangle())
             .onTapGesture { onChat() }
             .background(
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(isHovered ? Color.white.opacity(0.06) : Color.clear)
+                RoundedRectangle(cornerRadius: isActive ? 8 : 6)
+                    .fill(isActive
+                        ? accentColor.opacity(isHovered ? 0.1 : 0.05)
+                        : (isHovered ? Color.white.opacity(0.06) : Color.clear))
             )
         }
         .onHover { isHovered = $0 }
@@ -823,5 +966,79 @@ struct TerminalButton: View {
             .clipShape(Capsule())
         }
         .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Subagent List View
+
+struct SubagentListView: View {
+    let session: SessionState
+    @State private var isExpanded = true
+
+    private static let agentColor = Color(red: 0.6, green: 0.8, blue: 1.0)
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Collapsible header
+            HStack(spacing: 4) {
+                Rectangle()
+                    .fill(Self.agentColor.opacity(0.15))
+                    .frame(width: 1, height: 14)
+                    .padding(.leading, 18)
+
+                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                    .font(.system(size: 7, weight: .medium))
+                    .foregroundColor(Self.agentColor.opacity(0.4))
+
+                Text("Subagents (\(session.subagentState.activeTasks.count))")
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundColor(Self.agentColor.opacity(0.5))
+
+                Spacer()
+            }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                withAnimation(.easeInOut(duration: 0.15)) {
+                    isExpanded.toggle()
+                }
+            }
+            .padding(.vertical, 3)
+
+            if isExpanded {
+                ForEach(Array(session.subagentState.activeTasks.values), id: \.taskToolId) { task in
+                    HStack(spacing: 5) {
+                        HStack(spacing: 0) {
+                            Rectangle()
+                                .fill(Self.agentColor.opacity(0.15))
+                                .frame(width: 1)
+                            Rectangle()
+                                .fill(Self.agentColor.opacity(0.15))
+                                .frame(width: 8, height: 1)
+                        }
+                        .frame(width: 12, height: 16)
+                        .padding(.leading, 18)
+
+                        Circle()
+                            .fill(Self.agentColor.opacity(0.6))
+                            .frame(width: 4, height: 4)
+
+                        Text(task.description ?? "Agent")
+                            .font(.system(size: 9))
+                            .foregroundColor(.white.opacity(0.45))
+                            .lineLimit(1)
+
+                        Spacer()
+
+                        if !task.subagentTools.isEmpty {
+                            Text("\(task.subagentTools.count) tools")
+                                .font(.system(size: 8))
+                                .foregroundColor(.white.opacity(0.2))
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+        }
+        .padding(.horizontal, 8)
     }
 }

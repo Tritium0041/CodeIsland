@@ -36,7 +36,14 @@ A native macOS app that turns your MacBook's notch into a real-time control surf
 The collapsed notch shows everything at a glance:
 
 - **Animated buddy** — your Claude Code `/buddy` pet rendered as 16x16 pixel art with wave/dissolve/reassemble animation
-- **Project name + status** — colored per state (cyan=working, amber=needs approval, green=done, purple=thinking)
+- **Status dot** — color indicates state:
+  - 🟦 Cyan = working
+  - 🟧 Amber = needs approval
+  - 🟩 Green = done / waiting for input
+  - 🟣 Purple = thinking
+  - 🔴 Red = error, or session unattended >60s
+  - 🟠 Orange = session unattended >30s
+- **Project name + status** — carousel rotates task title, tool action, project name
 - **Session count** — `×3` badge showing active sessions
 - **Pixel Cat Mode** — toggle to show the hand-drawn pixel cat instead of your buddy
 

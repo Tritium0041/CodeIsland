@@ -743,20 +743,12 @@ struct CollapsedNotchContent: View {
         HStack(spacing: 0) {
             // ── Left wing (visible left of camera) ──
             HStack(spacing: 4) {
-                // Pulsing status dot — changes color when unattended
+                // Status dot — small, subtle
                 Circle()
                     .fill(effectiveStatusDotColor)
-                    .frame(width: 8, height: 8)
-                    .shadow(color: effectiveStatusDotColor.opacity(isUnattended ? 0.9 : 0.6), radius: isUnattended ? 6 : 4)
-                    .opacity(pulsePhase ? 1.0 : (isUnattended ? 0.5 : 0.4))
-                    .overlay(
-                        // Subtle red glow ring after 60 seconds
-                        Circle()
-                            .stroke(Color.red.opacity(isUrgentlyUnattended ? 0.6 : 0.0), lineWidth: 2)
-                            .frame(width: 12, height: 12)
-                            .scaleEffect(pulsePhase && isUrgentlyUnattended ? 1.3 : 1.0)
-                            .opacity(isUrgentlyUnattended ? (pulsePhase ? 0.8 : 0.3) : 0.0)
-                    )
+                    .frame(width: 6, height: 6)
+                    .shadow(color: effectiveStatusDotColor.opacity(0.5), radius: 3)
+                    .opacity(pulsePhase ? 1.0 : 0.5)
 
                 // Buddy icon
                 if usePixelCat {

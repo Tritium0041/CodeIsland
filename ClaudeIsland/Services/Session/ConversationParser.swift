@@ -130,7 +130,7 @@ actor ConversationParser {
                 if let message = json["message"] as? [String: Any] {
                     // Handle string content
                     if let msgContent = message["content"] as? String {
-                        if !msgContent.hasPrefix("<command-name>") && !msgContent.hasPrefix("<local-command") && !msgContent.hasPrefix("Caveat:") {
+                        if !Self.isSystemMessage(msgContent) {
                             firstUserMessage = Self.truncateMessage(msgContent, maxLength: 50)
                             break
                         }
@@ -140,7 +140,7 @@ actor ConversationParser {
                         for block in contentArray {
                             if let blockType = block["type"] as? String, blockType == "text",
                                let text = block["text"] as? String,
-                               !text.hasPrefix("<command-name>") && !text.hasPrefix("<local-command") && !text.hasPrefix("Caveat:") {
+                               !Self.isSystemMessage(text) {
                                 firstUserMessage = Self.truncateMessage(text, maxLength: 50)
                                 break
                             }
@@ -165,7 +165,7 @@ actor ConversationParser {
                     let isMeta = json["isMeta"] as? Bool ?? false
                     if !isMeta, let message = json["message"] as? [String: Any] {
                         if let msgContent = message["content"] as? String {
-                            if !msgContent.hasPrefix("<command-name>") && !msgContent.hasPrefix("<local-command") && !msgContent.hasPrefix("Caveat:") {
+                            if !Self.isSystemMessage(msgContent) {
                                 lastMessage = msgContent
                                 lastMessageRole = type
                             }
@@ -197,14 +197,14 @@ actor ConversationParser {
                 if !isMeta, let message = json["message"] as? [String: Any] {
                     var userText: String?
                     if let msgContent = message["content"] as? String {
-                        if !msgContent.hasPrefix("<command-name>") && !msgContent.hasPrefix("<local-command") && !msgContent.hasPrefix("Caveat:") {
+                        if !Self.isSystemMessage(msgContent) {
                             userText = msgContent
                         }
                     } else if let contentArray = message["content"] as? [[String: Any]] {
                         for block in contentArray {
                             if let blockType = block["type"] as? String, blockType == "text",
                                let text = block["text"] as? String,
-                               !text.hasPrefix("<command-name>") && !text.hasPrefix("<local-command") && !text.hasPrefix("Caveat:") {
+                               !Self.isSystemMessage(text) {
                                 userText = text
                                 break
                             }
@@ -284,6 +284,15 @@ actor ConversationParser {
     }
 
     /// Truncate message for display
+    /// Check if a message is a system/meta message that should be filtered out
+    private static func isSystemMessage(_ text: String) -> Bool {
+        text.hasPrefix("<command-name>") ||
+        text.hasPrefix("<local-command") ||
+        text.hasPrefix("<task-notification>") ||
+        text.hasPrefix("<system-reminder>") ||
+        text.hasPrefix("Caveat:")
+    }
+
     private static func truncateMessage(_ message: String?, maxLength: Int = 80) -> String? {
         guard let msg = message else { return nil }
         let cleaned = msg.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -387,9 +396,29 @@ actor ConversationParser {
             return state.messages
         }
 
+        // If data doesn't end with newline, last line may be incomplete — don't parse it
+        // Adjust offset so incomplete line is re-read next time
+        let endsWithNewline = newContent.hasSuffix("\n")
+        let adjustedContent: String
+        if endsWithNewline {
+            adjustedContent = newContent
+        } else {
+            // Find last newline and only process up to there
+            if let lastNewline = newContent.lastIndex(of: "\n") {
+                adjustedContent = String(newContent[...lastNewline])
+                let incompletePart = newContent[newContent.index(after: lastNewline)...]
+                // Rewind offset by the incomplete bytes
+                let incompleteBytes = UInt64(incompletePart.utf8.count)
+                state.lastFileOffset = fileSize - incompleteBytes
+            } else {
+                // No newline at all — entire chunk is incomplete, skip
+                return []
+            }
+        }
+
         state.clearPending = false
         let isIncrementalRead = state.lastFileOffset > 0
-        let lines = newContent.components(separatedBy: "\n")
+        let lines = adjustedContent.components(separatedBy: "\n")
         var newMessages: [ChatMessage] = []
 
         for line in lines where !line.isEmpty {
@@ -460,7 +489,10 @@ actor ConversationParser {
 
         DebugLogger.log("Parser", "Parsed \(lines.count) lines → \(newMessages.count) new msgs, total=\(state.messages.count) completedTools=\(state.completedToolIds.count)")
 
-        state.lastFileOffset = fileSize
+        // Only advance to fileSize if content was complete (no partial line)
+        if endsWithNewline {
+            state.lastFileOffset = fileSize
+        }
         return newMessages
     }
 
@@ -546,7 +578,7 @@ actor ConversationParser {
         var blocks: [MessageBlock] = []
 
         if let content = messageDict["content"] as? String {
-            if content.hasPrefix("<command-name>") || content.hasPrefix("<local-command") || content.hasPrefix("Caveat:") {
+            if Self.isSystemMessage(content) {
                 return nil
             }
             if content.hasPrefix("[Request interrupted by user") {
