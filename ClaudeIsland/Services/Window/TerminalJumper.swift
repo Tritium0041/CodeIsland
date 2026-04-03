@@ -72,19 +72,23 @@ actor TerminalJumper {
             if await activateByBundleId("hyper") { return true }
         }
 
-        // 3. If terminal app unknown, try common AppleScript terminals in order
-        if terminalApp.isEmpty {
-            if await jumpViaCmux(cwd: cwd) { return true }
-            if await jumpViaGhostty(cwd: cwd) { return true }
-            if await jumpViaiTerm2(cwd: cwd, pid: pid) { return true }
-            if await jumpViaTerminalApp(cwd: cwd, pid: pid) { return true }
-        }
+        // 3. If terminal app unknown OR all specific strategies failed,
+        //    try common AppleScript terminals in order
+        if await jumpViaCmux(cwd: cwd) { return true }
+        if await jumpViaGhostty(cwd: cwd) { return true }
+        if await jumpViaiTerm2(cwd: cwd, pid: pid) { return true }
+        if await jumpViaTerminalApp(cwd: cwd, pid: pid) { return true }
 
         // 4. Generic fallback: activate terminal app by bundle ID
-        if await activateByBundleId(terminalApp) { return true }
+        if !terminalApp.isEmpty {
+            if await activateByBundleId(terminalApp) { return true }
+        }
 
-        // 5. Last resort: try cmux activate
-        return await activateApp("cmux")
+        // 5. Last resort: activate any running terminal
+        for bundleId in ["com.cmuxterm.app", "com.mitchellh.ghostty", "dev.warp.Warp-Stable", "com.googlecode.iterm2", "com.apple.Terminal"] {
+            if activateRunningApp(bundleId: bundleId) { return true }
+        }
+        return false
     }
 
     // MARK: - iTerm2 (AppleScript — rich API)
