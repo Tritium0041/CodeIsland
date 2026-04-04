@@ -221,6 +221,10 @@ Have questions or want to chat? Reach out!
 
 Forked from [Claude Island](https://github.com/farouqaldori/claude-island) by farouqaldori. Rebuilt with pixel cat animations, buddy integration, cmux support, i18n, and minimal glow-dot design.
 
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=xmqywx/CodeIsland&type=Date)](https://star-history.com/#xmqywx/CodeIsland&Date)
+
 ## License
 
 CC BY-NC 4.0 — free for personal use, no commercial use.
