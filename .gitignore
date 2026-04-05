@@ -43,3 +43,13 @@ releases/
 *.xcodeproj.backup/
 CLAUDE.md
 CodeIsland-v1.6.0.zip
+.certificates/
+
+# Superpowers
+.superpowers/
+
+# Release zips
+CodeIsland-v*.zip
+
+# Node
+package-lock.json
