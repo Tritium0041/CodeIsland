@@ -96,7 +96,39 @@ actor TerminalJumper {
 
     private func jumpViaiTerm2(cwd: String, pid: Int?) async -> Bool {
         let dirName = URL(fileURLWithPath: cwd).lastPathComponent
-        let script = """
+
+        // Strategy 1: Match by tty (most reliable — iTerm2 exposes tty per session)
+        if let pid = pid {
+            let ttyScript = """
+            tell application "System Events"
+                if not (exists process "iTerm2") then return false
+            end tell
+            set targetTTY to do shell script "ps -o tty= -p \(pid) 2>/dev/null || echo none"
+            if targetTTY is "none" then return false
+            tell application "iTerm2"
+                repeat with w in windows
+                    repeat with t in tabs of w
+                        repeat with s in sessions of t
+                            try
+                                if tty of s contains targetTTY then
+                                    select t
+                                    select s
+                                    set index of w to 1
+                                    activate
+                                    return true
+                                end if
+                            end try
+                        end repeat
+                    end repeat
+                end repeat
+            end tell
+            return false
+            """
+            if await runAppleScript(ttyScript) { return true }
+        }
+
+        // Strategy 2: Match by session name containing directory name
+        let nameScript = """
         tell application "System Events"
             if not (exists process "iTerm2") then return false
         end tell
@@ -105,9 +137,12 @@ actor TerminalJumper {
                 repeat with t in tabs of w
                     repeat with s in sessions of t
                         try
-                            if name of s contains "\(dirName)" then
+                            set sName to name of s
+                            set sPath to path of s
+                            if sName contains "\(dirName)" or sPath contains "\(dirName)" then
                                 select t
                                 select s
+                                set index of w to 1
                                 activate
                                 return true
                             end if
@@ -119,7 +154,7 @@ actor TerminalJumper {
             return true
         end tell
         """
-        return await runAppleScript(script)
+        return await runAppleScript(nameScript)
     }
 
     // MARK: - Terminal.app (AppleScript)
