@@ -144,6 +144,7 @@ struct HookInstaller {
             return false
         }
 
+        // Copilot format: hooks = { "sessionStart": [...], "preToolUse": [...], ... }
         for (_, value) in hooks {
             if let entries = value as? [[String: Any]] {
                 for entry in entries {
@@ -260,7 +261,7 @@ struct HookInstaller {
     }
 
     private static func copilotHookCommand(command: String, timeoutSec: Int) -> [String: Any] {
-        // Copilot CLI hook schema uses `bash` and `timeoutSec` fields.
+        // Copilot CLI hooks use command entries with `type`, `bash`, and `timeoutSec`.
         ["type": "command", "bash": command, "timeoutSec": timeoutSec]
     }
 
