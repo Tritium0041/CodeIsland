@@ -8,14 +8,15 @@
 import Foundation
 
 struct HookInstaller {
+    private static let hookScriptCommandPath = "~/.claude/hooks/codeisland-state.py"
 
     /// Install hook script and update settings.json on app launch
     static func installIfNeeded() {
         let claudeDir = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".claude")
-        let hooksDir = claudeDir.appendingPathComponent("hooks")
-        let pythonScript = hooksDir.appendingPathComponent("codeisland-state.py")
         let settings = claudeDir.appendingPathComponent("settings.json")
+        let pythonScript = hookScriptURL()
+        let hooksDir = pythonScript.deletingLastPathComponent()
 
         try? FileManager.default.createDirectory(
             at: hooksDir,
@@ -43,7 +44,7 @@ struct HookInstaller {
         }
 
         let python = detectPython()
-        let command = "\(python) ~/.claude/hooks/codeisland-state.py"
+        let command = "\(python) \(hookScriptCommandPath)"
         let hookEntry: [[String: Any]] = [["type": "command", "command": command]]
         let hookEntryWithTimeout: [[String: Any]] = [["type": "command", "command": command, "timeout": 86400]]
         let withMatcher: [[String: Any]] = [["matcher": "*", "hooks": hookEntry]]
@@ -111,7 +112,7 @@ struct HookInstaller {
         )
 
         let python = detectPython()
-        let command = "\(python) ~/.claude/hooks/codeisland-state.py"
+        let command = "\(python) \(hookScriptCommandPath)"
         let hookConfig: [String: Any] = [
             "version": 1,
             "hooks": [
@@ -195,9 +196,8 @@ struct HookInstaller {
     static func uninstall() {
         let claudeDir = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".claude")
-        let hooksDir = claudeDir.appendingPathComponent("hooks")
-        let pythonScript = hooksDir.appendingPathComponent("codeisland-state.py")
         let settings = claudeDir.appendingPathComponent("settings.json")
+        let pythonScript = hookScriptURL()
 
         try? FileManager.default.removeItem(at: pythonScript)
 
@@ -263,5 +263,12 @@ struct HookInstaller {
         } catch {}
 
         return "python"
+    }
+
+    private static func hookScriptURL() -> URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".claude")
+            .appendingPathComponent("hooks")
+            .appendingPathComponent("codeisland-state.py")
     }
 }
