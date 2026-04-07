@@ -130,7 +130,7 @@ struct HookInstaller {
 
     /// Check if hooks are currently installed
     static func isInstalled() -> Bool {
-        isClaudeInstalled() || isCopilotInstalled()
+        isClaudeInstalled() && isCopilotInstalled()
     }
 
     private static func isClaudeInstalled() -> Bool {
