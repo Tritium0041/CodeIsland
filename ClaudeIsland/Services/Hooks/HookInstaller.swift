@@ -271,7 +271,7 @@ struct HookInstaller {
             "postToolUse": defaultHook,
             "agentStop": defaultHook,
             "subagentStop": defaultHook,
-            "errorOccurred": defaultHook,
+            "errorOccurred": defaultHook
         ]
     }
 
