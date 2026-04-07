@@ -11,6 +11,16 @@ struct HookInstaller {
     private static let hookScriptCommandPath = "~/.claude/hooks/codeisland-state.py"
     private static let defaultCopilotHookTimeoutSec = 10
     private static let preToolUseCopilotHookTimeoutSec = 300
+    private static let supportedCopilotHookEvents: Set<String> = [
+        "sessionStart",
+        "sessionEnd",
+        "userPromptSubmitted",
+        "preToolUse",
+        "postToolUse",
+        "agentStop",
+        "subagentStop",
+        "errorOccurred"
+    ]
 
     /// Install hook script and update settings.json on app launch
     static func installIfNeeded() {
@@ -114,10 +124,9 @@ struct HookInstaller {
         )
 
         let python = detectPython()
-        let command = "\(python) \(hookScriptCommandPath)"
         let hookConfig: [String: Any] = [
             "version": 1,
-            "hooks": copilotHooks(command: command)
+            "hooks": copilotHooks(pythonExecutable: python)
         ]
 
         if let data = try? JSONSerialization.data(
@@ -260,22 +269,35 @@ struct HookInstaller {
         return "python"
     }
 
-    private static func copilotHookCommand(command: String, timeoutSec: Int) -> [String: Any] {
+    private static func copilotHookCommand(pythonExecutable: String, eventName: String, timeoutSec: Int) -> [String: Any] {
         // Copilot CLI hooks use command entries with `type`, `bash`, and `timeoutSec`.
-        ["type": "command", "bash": command, "timeoutSec": timeoutSec]
+        guard supportedCopilotHookEvents.contains(eventName) else {
+            return ["type": "command", "bash": ":", "timeoutSec": timeoutSec]
+        }
+
+        let safePython = (pythonExecutable == "python3" || pythonExecutable == "python") ? pythonExecutable : "python3"
+        let scriptPath = hookScriptURL().path
+        let escapedScriptPath = scriptPath.replacingOccurrences(of: "'", with: "'\"'\"'")
+
+        guard let payloadData = try? JSONSerialization.data(withJSONObject: ["hook_event_name": eventName]) else {
+            return ["type": "command", "bash": ":", "timeoutSec": timeoutSec]
+        }
+
+        let payloadBase64 = payloadData.base64EncodedString()
+        let bashCommand = "\(safePython) -c \"import base64,sys;sys.stdout.buffer.write(base64.b64decode('\(payloadBase64)'))\" | \(safePython) '\(escapedScriptPath)'"
+        return ["type": "command", "bash": bashCommand, "timeoutSec": timeoutSec]
     }
 
-    private static func copilotHooks(command: String) -> [String: Any] {
-        let defaultHook = [copilotHookCommand(command: command, timeoutSec: defaultCopilotHookTimeoutSec)]
+    private static func copilotHooks(pythonExecutable: String) -> [String: Any] {
         return [
-            "sessionStart": defaultHook,
-            "sessionEnd": defaultHook,
-            "userPromptSubmitted": defaultHook,
-            "preToolUse": [copilotHookCommand(command: command, timeoutSec: preToolUseCopilotHookTimeoutSec)],
-            "postToolUse": defaultHook,
-            "agentStop": defaultHook,
-            "subagentStop": defaultHook,
-            "errorOccurred": defaultHook
+            "sessionStart": [copilotHookCommand(pythonExecutable: pythonExecutable, eventName: "sessionStart", timeoutSec: defaultCopilotHookTimeoutSec)],
+            "sessionEnd": [copilotHookCommand(pythonExecutable: pythonExecutable, eventName: "sessionEnd", timeoutSec: defaultCopilotHookTimeoutSec)],
+            "userPromptSubmitted": [copilotHookCommand(pythonExecutable: pythonExecutable, eventName: "userPromptSubmitted", timeoutSec: defaultCopilotHookTimeoutSec)],
+            "preToolUse": [copilotHookCommand(pythonExecutable: pythonExecutable, eventName: "preToolUse", timeoutSec: preToolUseCopilotHookTimeoutSec)],
+            "postToolUse": [copilotHookCommand(pythonExecutable: pythonExecutable, eventName: "postToolUse", timeoutSec: defaultCopilotHookTimeoutSec)],
+            "agentStop": [copilotHookCommand(pythonExecutable: pythonExecutable, eventName: "agentStop", timeoutSec: defaultCopilotHookTimeoutSec)],
+            "subagentStop": [copilotHookCommand(pythonExecutable: pythonExecutable, eventName: "subagentStop", timeoutSec: defaultCopilotHookTimeoutSec)],
+            "errorOccurred": [copilotHookCommand(pythonExecutable: pythonExecutable, eventName: "errorOccurred", timeoutSec: defaultCopilotHookTimeoutSec)]
         ]
     }
 

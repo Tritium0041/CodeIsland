@@ -4,56 +4,56 @@
     "sessionStart": [
       {
         "type": "command",
-        "bash": "python3 ClaudeIsland/Resources/codeisland-state.py",
+        "bash": "printf '%s\\n' '{\"hook_event_name\":\"sessionStart\"}' | python3 ClaudeIsland/Resources/codeisland-state.py",
         "timeoutSec": 10
       }
     ],
     "sessionEnd": [
       {
         "type": "command",
-        "bash": "python3 ClaudeIsland/Resources/codeisland-state.py",
+        "bash": "printf '%s\\n' '{\"hook_event_name\":\"sessionEnd\"}' | python3 ClaudeIsland/Resources/codeisland-state.py",
         "timeoutSec": 10
       }
     ],
     "userPromptSubmitted": [
       {
         "type": "command",
-        "bash": "python3 ClaudeIsland/Resources/codeisland-state.py",
+        "bash": "printf '%s\\n' '{\"hook_event_name\":\"userPromptSubmitted\"}' | python3 ClaudeIsland/Resources/codeisland-state.py",
         "timeoutSec": 10
       }
     ],
     "preToolUse": [
       {
         "type": "command",
-        "bash": "python3 ClaudeIsland/Resources/codeisland-state.py",
+        "bash": "printf '%s\\n' '{\"hook_event_name\":\"preToolUse\"}' | python3 ClaudeIsland/Resources/codeisland-state.py",
         "timeoutSec": 300
       }
     ],
     "postToolUse": [
       {
         "type": "command",
-        "bash": "python3 ClaudeIsland/Resources/codeisland-state.py",
+        "bash": "printf '%s\\n' '{\"hook_event_name\":\"postToolUse\"}' | python3 ClaudeIsland/Resources/codeisland-state.py",
         "timeoutSec": 10
       }
     ],
     "agentStop": [
       {
         "type": "command",
-        "bash": "python3 ClaudeIsland/Resources/codeisland-state.py",
+        "bash": "printf '%s\\n' '{\"hook_event_name\":\"agentStop\"}' | python3 ClaudeIsland/Resources/codeisland-state.py",
         "timeoutSec": 10
       }
     ],
     "subagentStop": [
       {
         "type": "command",
-        "bash": "python3 ClaudeIsland/Resources/codeisland-state.py",
+        "bash": "printf '%s\\n' '{\"hook_event_name\":\"subagentStop\"}' | python3 ClaudeIsland/Resources/codeisland-state.py",
         "timeoutSec": 10
       }
     ],
     "errorOccurred": [
       {
         "type": "command",
-        "bash": "python3 ClaudeIsland/Resources/codeisland-state.py",
+        "bash": "printf '%s\\n' '{\"hook_event_name\":\"errorOccurred\"}' | python3 ClaudeIsland/Resources/codeisland-state.py",
         "timeoutSec": 10
       }
     ]
