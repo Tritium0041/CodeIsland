@@ -135,7 +135,7 @@ Toggle between flat list and project-grouped view:
 | **Pixel Cat Mode** | Switch notch icon between pixel cat and buddy emoji animation |
 | **Language** | Auto (system) / English / 中文 |
 | **Launch at Login** | Start CodeIsland automatically when you log in |
-| **Hooks** | Install/uninstall Claude Code hooks in `~/.claude/settings.json` |
+| **Hooks** | Install/uninstall Claude Code hooks in `~/.claude/settings.json` and Copilot hooks in `~/.copilot/hooks/codeisland.json` |
 | **Accessibility** | Grant accessibility permission for terminal window focusing |
 
 ## Terminal Support
@@ -188,7 +188,7 @@ xcodebuild -project ClaudeIsland.xcodeproj -scheme ClaudeIsland \
 
 ## How It Works
 
-1. **Zero config** — on first launch, CodeIsland installs hooks into `~/.claude/settings.json`
+1. **Zero config** — on first launch, CodeIsland installs hooks into `~/.claude/settings.json` and `~/.copilot/hooks/codeisland.json`
 2. **Hook events** — a Python script (`codeisland-state.py`) sends session state to the app via Unix socket (`/tmp/codeisland.sock`)
 3. **Permission approval** — for `PermissionRequest` events, the socket stays open until you click Allow/Deny, then sends the decision back to Claude Code
 4. **Buddy data** — reads `~/.claude.json` for name/personality, runs `buddy-bones.js` with Bun for accurate species/rarity/stats

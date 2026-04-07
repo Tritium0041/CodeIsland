@@ -31,10 +31,11 @@ struct HookInstaller {
             )
         }
 
-        updateSettings(at: settings)
+        updateClaudeSettings(at: settings)
+        installCopilotHooks()
     }
 
-    private static func updateSettings(at settingsURL: URL) {
+    private static func updateClaudeSettings(at settingsURL: URL) {
         var json: [String: Any] = [:]
         if let data = try? Data(contentsOf: settingsURL),
            let existing = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
@@ -98,12 +99,50 @@ struct HookInstaller {
         }
     }
 
+    private static func installCopilotHooks() {
+        let copilotHooksDir = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".copilot")
+            .appendingPathComponent("hooks")
+        let copilotHookFile = copilotHooksDir.appendingPathComponent("codeisland.json")
+
+        try? FileManager.default.createDirectory(
+            at: copilotHooksDir,
+            withIntermediateDirectories: true
+        )
+
+        let python = detectPython()
+        let command = "\(python) ~/.claude/hooks/codeisland-state.py"
+        let hookConfig: [String: Any] = [
+            "version": 1,
+            "hooks": [
+                "sessionStart": [["type": "command", "bash": command, "timeoutSec": 10]],
+                "sessionEnd": [["type": "command", "bash": command, "timeoutSec": 10]],
+                "userPromptSubmitted": [["type": "command", "bash": command, "timeoutSec": 10]],
+                "preToolUse": [["type": "command", "bash": command, "timeoutSec": 300]],
+                "postToolUse": [["type": "command", "bash": command, "timeoutSec": 10]],
+                "agentStop": [["type": "command", "bash": command, "timeoutSec": 10]],
+                "subagentStop": [["type": "command", "bash": command, "timeoutSec": 10]],
+                "errorOccurred": [["type": "command", "bash": command, "timeoutSec": 10]],
+            ]
+        ]
+
+        if let data = try? JSONSerialization.data(
+            withJSONObject: hookConfig,
+            options: [.prettyPrinted, .sortedKeys]
+        ) {
+            try? data.write(to: copilotHookFile)
+        }
+    }
+
     /// Check if hooks are currently installed
     static func isInstalled() -> Bool {
-        let claudeDir = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".claude")
-        let settings = claudeDir.appendingPathComponent("settings.json")
+        isClaudeInstalled() || isCopilotInstalled()
+    }
 
+    private static func isClaudeInstalled() -> Bool {
+        let settings = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".claude")
+            .appendingPathComponent("settings.json")
         guard let data = try? Data(contentsOf: settings),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let hooks = json["hooks"] as? [String: Any] else {
@@ -120,6 +159,31 @@ struct HookInstaller {
                                 return true
                             }
                         }
+                    }
+                }
+            }
+        }
+        return false
+    }
+
+    private static func isCopilotInstalled() -> Bool {
+        let copilotHookFile = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".copilot")
+            .appendingPathComponent("hooks")
+            .appendingPathComponent("codeisland.json")
+
+        guard let data = try? Data(contentsOf: copilotHookFile),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let hooks = json["hooks"] as? [String: Any] else {
+            return false
+        }
+
+        for (_, value) in hooks {
+            if let entries = value as? [[String: Any]] {
+                for entry in entries {
+                    let command = (entry["bash"] as? String) ?? (entry["command"] as? String) ?? ""
+                    if command.contains("codeisland-state.py") {
+                        return true
                     }
                 }
             }
@@ -175,6 +239,12 @@ struct HookInstaller {
         ) {
             try? data.write(to: settings)
         }
+
+        let copilotHookFile = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".copilot")
+            .appendingPathComponent("hooks")
+            .appendingPathComponent("codeisland.json")
+        try? FileManager.default.removeItem(at: copilotHookFile)
     }
 
     private static func detectPython() -> String {
