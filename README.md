@@ -70,6 +70,14 @@ Full integration with Claude Code's `/buddy` companion system:
 - **Rarity stars** — ★ Common to ★★★★★ Legendary with color coding
 - **18 species supported** — duck, goose, blob, cat, dragon, octopus, owl, penguin, turtle, snail, ghost, axolotl, capybara, cactus, robot, rabbit, mushroom, chonk
 
+### GitHub Copilot CLI Hook Support
+
+CodeIsland now includes built-in hook config for GitHub Copilot CLI:
+
+- Hook config is shipped in `.github/hooks/codeisland.json`
+- The same `codeisland-state.py` pipeline is reused, so Copilot CLI sessions can be shown in CodeIsland
+- Supported Copilot hook events include `sessionStart`, `sessionEnd`, `userPromptSubmitted`, `preToolUse`, `postToolUse`, `agentStop`, `subagentStop`, and `errorOccurred`
+
 ### Permission Approval
 
 Approve or deny Claude Code's permission requests right from the notch:
@@ -185,6 +193,15 @@ xcodebuild -project ClaudeIsland.xcodeproj -scheme ClaudeIsland \
 3. **Permission approval** — for `PermissionRequest` events, the socket stays open until you click Allow/Deny, then sends the decision back to Claude Code
 4. **Buddy data** — reads `~/.claude.json` for name/personality, runs `buddy-bones.js` with Bun for accurate species/rarity/stats
 5. **Terminal jump** — uses AppleScript to find and focus the correct terminal tab by matching working directory
+
+## GitHub Online Packaging CI
+
+This repository now includes GitHub Actions packaging CI at `.github/workflows/package.yml`:
+
+- Runs on `macos-14`
+- Builds unsigned Release app with `xcodebuild`
+- Packages the `.app` into a `.zip`
+- Uploads the package as a workflow artifact
 
 ## i18n
 

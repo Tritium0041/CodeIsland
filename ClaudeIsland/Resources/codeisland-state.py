@@ -77,10 +77,21 @@ def main():
     except json.JSONDecodeError:
         sys.exit(1)
 
-    session_id = data.get("session_id", "unknown")
-    event = data.get("hook_event_name", "")
-    cwd = data.get("cwd", "")
-    tool_input = data.get("tool_input", {})
+    session_id = data.get("session_id") or data.get("sessionId") or "unknown"
+    raw_event = data.get("hook_event_name") or data.get("event_name") or data.get("event") or ""
+    event_aliases = {
+        "userPromptSubmitted": "UserPromptSubmit",
+        "preToolUse": "PreToolUse",
+        "postToolUse": "PostToolUse",
+        "sessionStart": "SessionStart",
+        "sessionEnd": "SessionEnd",
+        "agentStop": "Stop",
+        "subagentStop": "SubagentStop",
+        "errorOccurred": "Notification",
+    }
+    event = event_aliases.get(raw_event, raw_event)
+    cwd = data.get("cwd") or data.get("working_directory") or os.getcwd()
+    tool_input = data.get("tool_input") or data.get("toolInput") or {}
 
     # Get process info
     claude_pid = os.getppid()
@@ -161,7 +172,7 @@ def main():
         sys.exit(0)
 
     elif event == "Notification":
-        notification_type = data.get("notification_type")
+        notification_type = data.get("notification_type") or data.get("notificationType")
         # Skip permission_prompt - PermissionRequest hook handles this with better info
         if notification_type == "permission_prompt":
             sys.exit(0)
