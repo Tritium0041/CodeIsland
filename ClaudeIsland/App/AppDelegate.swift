@@ -50,10 +50,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         _ = windowManager?.setupNotchWindow()
 
         screenObserver = ScreenObserver { [weak self] in
-            self?.handleScreenChange()
+            Task { @MainActor [weak self] in
+                self?.handleScreenChange()
+            }
         }
     }
 
+    @MainActor
     private func handleScreenChange() {
         _ = windowManager?.setupNotchWindow()
     }
