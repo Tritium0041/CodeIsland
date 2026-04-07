@@ -90,7 +90,7 @@ def main():
         "errorOccurred": "Notification",
     }
     event = event_aliases.get(raw_event, raw_event)
-    cwd = data.get("cwd") or data.get("working_directory") or os.getcwd()
+    cwd = data.get("cwd") or data.get("working_directory") or data.get("workspace_root") or ""
     tool_input = data.get("tool_input") or data.get("toolInput") or {}
 
     # Get process info
