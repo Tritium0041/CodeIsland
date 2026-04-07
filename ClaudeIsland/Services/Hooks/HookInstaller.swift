@@ -9,6 +9,8 @@ import Foundation
 
 struct HookInstaller {
     private static let hookScriptCommandPath = "~/.claude/hooks/codeisland-state.py"
+    private static let defaultCopilotHookTimeoutSec = 10
+    private static let preToolUseCopilotHookTimeoutSec = 300
 
     /// Install hook script and update settings.json on app launch
     static func installIfNeeded() {
@@ -262,12 +264,12 @@ struct HookInstaller {
     }
 
     private static func copilotHooks(command: String) -> [String: Any] {
-        let defaultHook = [copilotHookCommand(command: command, timeoutSec: 10)]
+        let defaultHook = [copilotHookCommand(command: command, timeoutSec: defaultCopilotHookTimeoutSec)]
         return [
             "sessionStart": defaultHook,
             "sessionEnd": defaultHook,
             "userPromptSubmitted": defaultHook,
-            "preToolUse": [copilotHookCommand(command: command, timeoutSec: 300)],
+            "preToolUse": [copilotHookCommand(command: command, timeoutSec: preToolUseCopilotHookTimeoutSec)],
             "postToolUse": defaultHook,
             "agentStop": defaultHook,
             "subagentStop": defaultHook,
