@@ -118,7 +118,7 @@ def main():
     )
     tool_name = first_value(data, "tool_name", "toolName", default=None)
     tool_use_id = first_value(data, "tool_use_id", "toolUseId", default=None)
-    tool_input = first_value(data, "tool_input", "toolInput")
+    tool_input = first_value(data, "tool_input", "toolInput", default=None)
     if tool_input is None:
         tool_input = {}
 
