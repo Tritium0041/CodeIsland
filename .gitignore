@@ -53,3 +53,7 @@ CodeIsland-v*.zip
 
 # Node
 package-lock.json
+
+# Python cache
+__pycache__/
+*.pyc

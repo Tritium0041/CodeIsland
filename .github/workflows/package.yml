@@ -1,0 +1,59 @@
+name: Package macOS App
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+
+jobs:
+  package:
+    runs-on: macos-14
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build release app (unsigned)
+        run: |
+          xcodebuild -project ClaudeIsland.xcodeproj \
+            -scheme ClaudeIsland \
+            -configuration Release \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            DEVELOPMENT_TEAM="" \
+            build
+
+      - name: Package app as zip artifact
+        id: package
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/DerivedData/Build/Products/Release -name "*.app" -print -quit)"
+          if [ -z "${APP_PATH:-}" ]; then
+            echo "No .app found in build output"
+            exit 1
+          fi
+
+          VERSION="$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "${APP_PATH}/Contents/Info.plist")"
+          APP_BASENAME="$(basename "$APP_PATH" .app)"
+          OUTPUT_DIR="build/artifacts"
+          ZIP_PATH="${OUTPUT_DIR}/${APP_BASENAME}-${VERSION}.zip"
+
+          mkdir -p "$OUTPUT_DIR"
+          ditto -c -k --keepParent "$APP_PATH" "$ZIP_PATH"
+
+          echo "zip_path=$ZIP_PATH" >> "$GITHUB_OUTPUT"
+          echo "zip_name=$(basename "$ZIP_PATH")" >> "$GITHUB_OUTPUT"
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.package.outputs.zip_name }}
+          path: ${{ steps.package.outputs.zip_path }}
+          if-no-files-found: error

@@ -13,6 +13,15 @@ SOCKET_PATH = "/tmp/codeisland.sock"
 TIMEOUT_SECONDS = 300  # 5 minutes for permission decisions
 
 
+def first_value(payload, *keys, default=None):
+    """Return the first non-empty value for a list of candidate keys."""
+    for key in keys:
+        value = payload.get(key)
+        if value not in (None, ""):
+            return value
+    return default
+
+
 def get_tty():
     """Get the TTY of the Claude process (parent)"""
     import subprocess
@@ -77,10 +86,23 @@ def main():
     except json.JSONDecodeError:
         sys.exit(1)
 
-    session_id = data.get("session_id", "unknown")
-    event = data.get("hook_event_name", "")
-    cwd = data.get("cwd", "")
-    tool_input = data.get("tool_input", {})
+    session_id = first_value(data, "session_id", "sessionId", default="unknown")
+    raw_event = first_value(data, "hook_event_name", "event_name", "event", default="")
+    event_aliases = {
+        "userPromptSubmitted": "UserPromptSubmit",
+        "preToolUse": "PreToolUse",
+        "postToolUse": "PostToolUse",
+        "sessionStart": "SessionStart",
+        "sessionEnd": "SessionEnd",
+        "agentStop": "Stop",
+        "subagentStop": "SubagentStop",
+        "errorOccurred": "Notification",
+    }
+    event = event_aliases.get(raw_event, raw_event)
+    cwd = first_value(data, "cwd", "working_directory", "workspace_root", default="")
+    tool_input = first_value(data, "tool_input", "toolInput")
+    if tool_input is None:
+        tool_input = {}
 
     # Get process info
     claude_pid = os.getppid()
@@ -161,7 +183,7 @@ def main():
         sys.exit(0)
 
     elif event == "Notification":
-        notification_type = data.get("notification_type")
+        notification_type = first_value(data, "notification_type", "notificationType")
         # Skip permission_prompt - PermissionRequest hook handles this with better info
         if notification_type == "permission_prompt":
             sys.exit(0)

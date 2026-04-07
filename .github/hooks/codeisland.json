@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "type": "command",
+        "bash": "python3 ClaudeIsland/Resources/codeisland-state.py",
+        "timeoutSec": 10
+      }
+    ],
+    "sessionEnd": [
+      {
+        "type": "command",
+        "bash": "python3 ClaudeIsland/Resources/codeisland-state.py",
+        "timeoutSec": 10
+      }
+    ],
+    "userPromptSubmitted": [
+      {
+        "type": "command",
+        "bash": "python3 ClaudeIsland/Resources/codeisland-state.py",
+        "timeoutSec": 10
+      }
+    ],
+    "preToolUse": [
+      {
+        "type": "command",
+        "bash": "python3 ClaudeIsland/Resources/codeisland-state.py",
+        "timeoutSec": 300
+      }
+    ],
+    "postToolUse": [
+      {
+        "type": "command",
+        "bash": "python3 ClaudeIsland/Resources/codeisland-state.py",
+        "timeoutSec": 10
+      }
+    ],
+    "agentStop": [
+      {
+        "type": "command",
+        "bash": "python3 ClaudeIsland/Resources/codeisland-state.py",
+        "timeoutSec": 10
+      }
+    ],
+    "subagentStop": [
+      {
+        "type": "command",
+        "bash": "python3 ClaudeIsland/Resources/codeisland-state.py",
+        "timeoutSec": 10
+      }
+    ],
+    "errorOccurred": [
+      {
+        "type": "command",
+        "bash": "python3 ClaudeIsland/Resources/codeisland-state.py",
+        "timeoutSec": 10
+      }
+    ]
+  }
+}

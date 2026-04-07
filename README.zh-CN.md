@@ -98,6 +98,14 @@ Claude 提问时，选项按钮直接显示在会话行：
 - **宠物卡片** — ASCII 精灵 + 属性条 + 性格描述
 - **稀有度星级** — ★ 普通 到 ★★★★★ 传说
 
+### GitHub Copilot CLI Hook 支持
+
+CodeIsland 现已内置 GitHub Copilot CLI 的 Hook 配置：
+
+- 仓库内置配置文件：`.github/hooks/codeisland.json`
+- 复用同一套 `codeisland-state.py` 管道，Copilot CLI 会话可被 CodeIsland 展示
+- 支持的 Copilot Hook 事件包括 `sessionStart`、`sessionEnd`、`userPromptSubmitted`、`preToolUse`、`postToolUse`、`agentStop`、`subagentStop`、`errorOccurred`
+
 ### 权限审批
 
 直接在刘海中审批 Claude Code 的权限请求：
@@ -162,6 +170,15 @@ xcodebuild -project ClaudeIsland.xcodeproj -scheme ClaudeIsland \
 
 - macOS 14+（Sonoma）
 - 带刘海的 MacBook（外接显示器使用浮动模式）
+
+## GitHub 在线打包 CI
+
+仓库已新增 GitHub Actions 在线打包流程：`.github/workflows/package.yml`：
+
+- 使用 `macos-14` 运行器
+- 通过 `xcodebuild` 构建未签名 Release 应用
+- 将 `.app` 打包为 `.zip`
+- 上传为 workflow artifact 供下载
 
 ## 参与贡献
 
