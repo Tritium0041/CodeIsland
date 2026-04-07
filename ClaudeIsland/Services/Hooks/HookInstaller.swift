@@ -115,16 +115,7 @@ struct HookInstaller {
         let command = "\(python) \(hookScriptCommandPath)"
         let hookConfig: [String: Any] = [
             "version": 1,
-            "hooks": [
-                "sessionStart": [["type": "command", "bash": command, "timeoutSec": 10]],
-                "sessionEnd": [["type": "command", "bash": command, "timeoutSec": 10]],
-                "userPromptSubmitted": [["type": "command", "bash": command, "timeoutSec": 10]],
-                "preToolUse": [["type": "command", "bash": command, "timeoutSec": 300]],
-                "postToolUse": [["type": "command", "bash": command, "timeoutSec": 10]],
-                "agentStop": [["type": "command", "bash": command, "timeoutSec": 10]],
-                "subagentStop": [["type": "command", "bash": command, "timeoutSec": 10]],
-                "errorOccurred": [["type": "command", "bash": command, "timeoutSec": 10]],
-            ]
+            "hooks": copilotHooks(command: command)
         ]
 
         if let data = try? JSONSerialization.data(
@@ -263,6 +254,25 @@ struct HookInstaller {
         } catch {}
 
         return "python"
+    }
+
+    private static func copilotHookCommand(command: String, timeoutSec: Int) -> [String: Any] {
+        // Copilot CLI hook schema uses `bash` and `timeoutSec` fields.
+        ["type": "command", "bash": command, "timeoutSec": timeoutSec]
+    }
+
+    private static func copilotHooks(command: String) -> [String: Any] {
+        let defaultHook = [copilotHookCommand(command: command, timeoutSec: 10)]
+        return [
+            "sessionStart": defaultHook,
+            "sessionEnd": defaultHook,
+            "userPromptSubmitted": defaultHook,
+            "preToolUse": [copilotHookCommand(command: command, timeoutSec: 300)],
+            "postToolUse": defaultHook,
+            "agentStop": defaultHook,
+            "subagentStop": defaultHook,
+            "errorOccurred": defaultHook,
+        ]
     }
 
     private static func hookScriptURL() -> URL {
