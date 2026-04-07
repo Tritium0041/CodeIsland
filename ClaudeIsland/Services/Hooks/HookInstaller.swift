@@ -114,10 +114,9 @@ struct HookInstaller {
         )
 
         let python = detectPython()
-        let command = "\(python) \(hookScriptCommandPath)"
         let hookConfig: [String: Any] = [
             "version": 1,
-            "hooks": copilotHooks(command: command)
+            "hooks": copilotHooks(python: python)
         ]
 
         if let data = try? JSONSerialization.data(
@@ -260,22 +259,30 @@ struct HookInstaller {
         return "python"
     }
 
-    private static func copilotHookCommand(command: String, timeoutSec: Int) -> [String: Any] {
-        // Copilot CLI hooks use command entries with `type`, `bash`, and `timeoutSec`.
-        ["type": "command", "bash": command, "timeoutSec": timeoutSec]
+    /// Build a single Copilot hook entry.
+    /// Copilot passes the event JSON via stdin but does NOT include a `hook_event_name` field.
+    /// We therefore pipe stdin through a small inline Python snippet that merges the event name
+    /// before forwarding the enriched payload to the main hook script.
+    private static func copilotHookCommand(eventName: String, python: String, timeoutSec: Int) -> [String: Any] {
+        // Read Copilot's stdin, inject `hook_event_name`, then pipe to the hook script.
+        let bash = "INPUT=$(cat); echo \"$INPUT\" | \(python) -c \"" +
+            "import sys,json; d=json.load(sys.stdin); d['hook_event_name']='\(eventName)'; print(json.dumps(d))\" " +
+            "| \(python) \(hookScriptCommandPath)"
+        return ["type": "command", "bash": bash, "timeoutSec": timeoutSec]
     }
 
-    private static func copilotHooks(command: String) -> [String: Any] {
-        let defaultHook = [copilotHookCommand(command: command, timeoutSec: defaultCopilotHookTimeoutSec)]
+    private static func copilotHooks(python: String) -> [String: Any] {
+        let t = defaultCopilotHookTimeoutSec
+        let tLong = preToolUseCopilotHookTimeoutSec
         return [
-            "sessionStart": defaultHook,
-            "sessionEnd": defaultHook,
-            "userPromptSubmitted": defaultHook,
-            "preToolUse": [copilotHookCommand(command: command, timeoutSec: preToolUseCopilotHookTimeoutSec)],
-            "postToolUse": defaultHook,
-            "agentStop": defaultHook,
-            "subagentStop": defaultHook,
-            "errorOccurred": defaultHook
+            "sessionStart":        [copilotHookCommand(eventName: "sessionStart",        python: python, timeoutSec: t)],
+            "sessionEnd":          [copilotHookCommand(eventName: "sessionEnd",          python: python, timeoutSec: t)],
+            "userPromptSubmitted": [copilotHookCommand(eventName: "userPromptSubmitted", python: python, timeoutSec: t)],
+            "preToolUse":          [copilotHookCommand(eventName: "preToolUse",          python: python, timeoutSec: tLong)],
+            "postToolUse":         [copilotHookCommand(eventName: "postToolUse",         python: python, timeoutSec: t)],
+            "agentStop":           [copilotHookCommand(eventName: "agentStop",           python: python, timeoutSec: t)],
+            "subagentStop":        [copilotHookCommand(eventName: "subagentStop",        python: python, timeoutSec: t)],
+            "errorOccurred":       [copilotHookCommand(eventName: "errorOccurred",       python: python, timeoutSec: t)],
         ]
     }
 
