@@ -116,6 +116,7 @@ def main():
         "workspaceRoot",
         default=""
     )
+    # Normalize tool metadata once so both Claude Code and Copilot CLI payload styles work.
     tool_name = first_value(data, "tool_name", "toolName", default=None)
     tool_use_id = first_value(data, "tool_use_id", "toolUseId", default=None)
     tool_input = first_value(data, "tool_input", "toolInput", default=None)
