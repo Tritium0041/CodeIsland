@@ -116,8 +116,8 @@ def main():
         "workspaceRoot",
         default=""
     )
-    tool_name = first_value(data, "tool_name", "toolName")
-    tool_use_id = first_value(data, "tool_use_id", "toolUseId")
+    tool_name = first_value(data, "tool_name", "toolName", default=None)
+    tool_use_id = first_value(data, "tool_use_id", "toolUseId", default=None)
     tool_input = first_value(data, "tool_input", "toolInput")
     if tool_input is None:
         tool_input = {}
