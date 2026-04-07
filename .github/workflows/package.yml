@@ -34,7 +34,7 @@ jobs:
         id: package
         run: |
           set -euo pipefail
-          APP_PATH="$(find build/DerivedData/Build/Products/Release -maxdepth 3 -name "*.app" -print -quit)"
+          APP_PATH="$(find build/DerivedData/Build/Products/Release -name "*.app" -print -quit)"
           if [ -z "${APP_PATH:-}" ]; then
             echo "No .app found in build output"
             exit 1

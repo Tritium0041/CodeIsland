@@ -100,7 +100,9 @@ def main():
     }
     event = event_aliases.get(raw_event, raw_event)
     cwd = first_value(data, "cwd", "working_directory", "workspace_root", default="")
-    tool_input = first_value(data, "tool_input", "toolInput", default={})
+    tool_input = first_value(data, "tool_input", "toolInput")
+    if tool_input is None:
+        tool_input = {}
 
     # Get process info
     claude_pid = os.getppid()
