@@ -144,7 +144,6 @@ struct HookInstaller {
             return false
         }
 
-        // Copilot format: hooks = { "sessionStart": [...], "preToolUse": [...], ... }
         for (_, value) in hooks {
             if let entries = value as? [[String: Any]] {
                 for entry in entries {
@@ -174,6 +173,7 @@ struct HookInstaller {
             return false
         }
 
+        // Copilot format: hooks = { "sessionStart": [...], "preToolUse": [...], ... }
         for (_, value) in hooks {
             if let entries = value as? [[String: Any]] {
                 for entry in entries {
