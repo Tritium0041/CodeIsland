@@ -130,7 +130,8 @@ struct HookInstaller {
 
     /// Check if hooks are currently installed
     static func isInstalled() -> Bool {
-        isClaudeInstalled() && isCopilotInstalled()
+        // Keep backward compatibility: if either system is configured, treat hooks as installed.
+        isClaudeInstalled() || isCopilotInstalled()
     }
 
     private static func isClaudeInstalled() -> Bool {
@@ -175,7 +176,7 @@ struct HookInstaller {
         for (_, value) in hooks {
             if let entries = value as? [[String: Any]] {
                 for entry in entries {
-                    let command = (entry["bash"] as? String) ?? (entry["command"] as? String) ?? ""
+                    let command = entry["bash"] as? String ?? ""
                     if command.contains("codeisland-state.py") {
                         return true
                     }
